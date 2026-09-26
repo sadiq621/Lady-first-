@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lady First — Private Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{--ink:#171210;--rose:#8c536a;--cream:#f6efe8;--line:#e5d9d0;--muted:#746a65}
+*{box-sizing:border-box}body{margin:0;background:var(--cream);color:var(--ink);font-family:"DM Sans",sans-serif}.wrap{width:min(1120px,92%);margin:35px auto}
+.header{display:flex;justify-content:space-between;align-items:center;gap:20px}.brand{font:600 38px "Playfair Display"}.muted{color:var(--muted);font-size:13px}
+.panel{background:#fff;border:1px solid var(--line);border-radius:18px;padding:25px;margin:20px 0;box-shadow:0 12px 35px #3d21170c}
+input,textarea,button{width:100%;padding:13px;border:1px solid #ddd0c7;border-radius:10px;margin:6px 0 15px;font:inherit}button{background:var(--rose);color:#fff;border:0;font-weight:700;cursor:pointer}.danger{background:#a23e4e}.secondary{background:#ece5df;color:var(--ink)}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}.item{border:1px solid var(--line);border-radius:15px;overflow:hidden;background:#fff}.item img{width:100%;height:220px;object-fit:cover}.item-body{padding:15px}.item h3{font:500 22px "Playfair Display";margin:0 0 5px}.item p{font-size:12px;color:var(--muted);min-height:32px}.row{display:grid;grid-template-columns:1fr 1fr;gap:16px}.msg{padding:11px;background:#f4e9ee;border-radius:10px;font-size:12px;margin-bottom:12px}.hidden{display:none!important}.status{padding:10px 13px;border-radius:999px;background:#efe7df;font-size:11px}.logout{width:auto;padding:10px 15px;background:#fff;color:var(--ink);border:1px solid var(--line)}
+@media(max-width:760px){.grid,.row{grid-template-columns:1fr}.header{align-items:flex-start}}
+</style>
+</head>
+<body><div class="wrap">
+<div class="header"><div><div class="brand">Lady First</div><div class="muted">Private Catalogue Manager</div></div><button id="logout" class="logout hidden">Log out</button></div>
+<div id="loginPanel" class="panel"><h2>Admin Login</h2><p class="muted">This panel is private. Use the admin account created in Supabase Authentication.</p><input id="email" type="email" placeholder="Admin email"><input id="password" type="password" placeholder="Password"><button id="login">Sign in</button><div id="loginMsg" class="msg hidden"></div></div>
+<div id="adminPanel" class="hidden">
+<div class="panel"><div style="display:flex;justify-content:space-between;gap:10px;align-items:center"><h2>Add a new product</h2><span class="status">Live catalogue</span></div>
+<div class="row"><div><label>Product name</label><input id="title" placeholder="e.g. Signature Tote"></div><div><label>Category</label><input id="category" placeholder="Handbags / Sling Bags / etc."></div></div>
+<label>Description</label><textarea id="description" rows="3" placeholder="Short product description"></textarea>
+<label>Product photo</label><input id="photo" type="file" accept="image/*">
+<button id="add">Upload & publish</button><div id="addMsg" class="msg hidden"></div></div>
+<div class="panel"><h2>Manage products</h2><p class="muted">Delete a product here and it disappears from the public collection.</p><div id="list" class="grid"></div></div>
+</div></div>
+<script>
+const SUPABASE_URL="PASTE_YOUR_SUPABASE_URL";
+const SUPABASE_ANON_KEY="PASTE_YOUR_SUPABASE_ANON_KEY";
+const db=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
+const $=id=>document.getElementById(id);
+function message(el,t,show=true){el.textContent=t;el.classList.toggle("hidden",!show)}
+async function refresh(){
+ const {data,error}=await db.from("products").select("*").order("created_at",{ascending:false});
+ if(error){$("list").innerHTML="<p>Unable to load products. Check the Supabase policies/setup.</p>";return}
+ $("list").innerHTML=(data||[]).map(p=>`<article class="item"><img src="${p.image_url}" alt=""><div class="item-body"><h3>${p.title}</h3><p>${p.category||""}</p><button class="danger" onclick="removeProduct('${p.id}','${(p.storage_path||"").replace(/'/g,"")}')">Delete product</button></div></article>`).join("") || "<p>No products yet.</p>";
+}
+async function boot(){const {data:{session}}=await db.auth.getSession();if(session){$("loginPanel").classList.add("hidden");$("adminPanel").classList.remove("hidden");$("logout").classList.remove("hidden");refresh();}}
+$("login").onclick=async()=>{const {error}=await db.auth.signInWithPassword({email:$("email").value,password:$("password").value});if(error)message($("loginMsg"),error.message);else boot()};
+$("logout").onclick=async()=>{await db.auth.signOut();location.reload()};
+$("add").onclick=async()=>{
+ const f=$("photo").files[0],title=$("title").value.trim();
+ if(!f||!title){message($("addMsg"),"Product name and photo are required.");return}
+ message($("addMsg"),"Uploading…");
+ const path=`products/${Date.now()}-${f.name.replace(/[^a-zA-Z0-9._-]/g,"-")}`;
+ const up=await db.storage.from("product-images").upload(path,f,{upsert:false});
+ if(up.error){message($("addMsg"),up.error.message);return}
+ const pub=db.storage.from("product-images").getPublicUrl(path);
+ const ins=await db.from("products").insert({title,category:$("category").value.trim(),description:$("description").value.trim(),image_url:pub.data.publicUrl,storage_path:path,is_active:true});
+ if(ins.error){await db.storage.from("product-images").remove([path]);message($("addMsg"),ins.error.message);return}
+ $("title").value="";$("category").value="";$("description").value="";$("photo").value="";message($("addMsg"),"Published successfully.");refresh();
+};
+window.removeProduct=async(id,path)=>{
+ if(!confirm("Delete this product from the public website?"))return;
+ const d=await db.from("products").delete().eq("id",id);if(d.error){alert(d.error.message);return}
+ if(path)await db.storage.from("product-images").remove([path]);refresh();
+};
+boot();
+</script></body></html>
