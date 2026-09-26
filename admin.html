@@ -27,8 +27,8 @@ input,textarea,button{width:100%;padding:13px;border:1px solid #ddd0c7;border-ra
 <div class="panel"><h2>Manage products</h2><p class="muted">Delete a product here and it disappears from the public collection.</p><div id="list" class="grid"></div></div>
 </div></div>
 <script>
-const SUPABASE_URL="PASTE_YOUR_SUPABASE_URL";
-const SUPABASE_ANON_KEY="PASTE_YOUR_SUPABASE_ANON_KEY";
+const SUPABASE_URL="https://mthndwlrbkoiyxjoevec.supabase.co";
+const SUPABASE_ANON_KEY="sb_publishable_w_deTI1NoSdKvagxv6vZoQ_S4fJgtC7";
 const db=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
 const $=id=>document.getElementById(id);
 function message(el,t,show=true){el.textContent=t;el.classList.toggle("hidden",!show)}
